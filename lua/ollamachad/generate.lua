@@ -106,8 +106,14 @@ M.prompt = function(request)
                     line_char_count = 0
                 end
 
+                -- trim leading whitespace on new lines
+                if line_char_count == 0 then
+                    token = token:gsub("^%s+", "")
+                end
+
                 line_char_count = line_char_count + #token
-                local sanatised_token = token:gsub("\n", " ")
+                local sanatised_token = token:gsub("\n", "")
+
                 if #sanatised_token > 0 then
                     table.insert(words, sanatised_token)
                     vim.api.nvim_buf_set_lines(generate_popup.bufnr, line, line + 1, false, { table.concat(words, "") })

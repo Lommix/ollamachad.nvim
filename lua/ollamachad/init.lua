@@ -1,9 +1,20 @@
---- @class OllamaOptions
---- @field chat_api_url string
---- @field generate_api_url string
+---@class Keymap
+---@field prompt string
+---@field close string
+---@field clear string
+
+---@class OllamaOptions
+---@field chat_api_url string
+---@field generate_api_url string
+---@field keymap Keymap
 local defaults = {
     generate_api_url = "http://127.0.0.1:11434/api/generate",
     chat_api_url = "http://127.0.0.1:11434/api/chat",
+    keymap = {
+        prompt = "<CR>",
+        close = "<Esc>",
+        clear = "<C-n>",
+    },
 }
 
 --- @class Ollamachad

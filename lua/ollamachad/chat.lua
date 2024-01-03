@@ -78,8 +78,8 @@ function Chat:new(model, opts)
             },
         },
         Layout.Box({
-            Layout.Box(chat_float, { size = "80%" }),
-            Layout.Box(prompt_float, { size = "20%" }),
+            Layout.Box(chat_float, { size = "85%" }),
+            Layout.Box(prompt_float, { size = "15%" }),
         }, { dir = "col" })
     )
 
@@ -141,28 +141,26 @@ function Chat:send()
         return
     end
 
-    local prompt = table.concat(vim.api.nvim_buf_get_lines(self.prompt_float.bufnr, 0, -1, false), "\n")
+    local prompt_buffer = vim.api.nvim_buf_get_lines(self.prompt_float.bufnr, 0, -1, false)
+    local prompt_string = table.concat(prompt_buffer, " ")
+
+    -- remove line
     vim.api.nvim_buf_set_lines(self.prompt_float.bufnr, 0, -1, false, {})
 
+    for i, line in ipairs(prompt_buffer) do
+        prompt_buffer[i] = "# " .. line
+    end
+    prompt_buffer[#prompt_buffer + 1] = ""
+
     -- insert into chat
-    vim.api.nvim_buf_set_lines(self.chat_float.bufnr, -1, -1, false, { "", "# " .. prompt, "" })
+    vim.api.nvim_buf_set_lines(self.chat_float.bufnr, -1, -1, false, prompt_buffer)
 
     self.current_chat.messages[#self.current_chat.messages + 1] = {
         role = "user",
-        content = prompt,
+        content = prompt_string,
     }
 
     self:prompt()
-
-    -- Ollama.chat(
-    -- 	self.current_chat,
-    -- 	self.chat_float.bufnr,
-    -- 	self.chat_float.winid,
-    -- 	self.chat_float.win_config.width,
-    -- 	function()
-    -- 		self.running = false
-    -- 	end
-    -- )
 end
 
 --.toggles chat window
@@ -181,7 +179,6 @@ end
 --- @return number - pid of the curl process
 function Chat:prompt()
     local line = vim.api.nvim_buf_line_count(self.chat_float.bufnr)
-    local max_width = self.chat_float.win_config.width
     local line_char_count = 0
     local words = {}
 
@@ -221,17 +218,22 @@ function Chat:prompt()
                 if not result.done then
                     local token = result.message.content
 
-                    if (string.match(token, "^%s") and line_char_count > max_width) or string.match(token, "\n") then -- if returned data array has more than one element, a line break occured.
+                    if string.match(token, "\n") then
                         line = line + 1
                         words = {}
                         line_char_count = 0
+                        token = token:gsub("\n", "")
+                    end
+
+                    -- trim leading whitespace on new lines
+                    if line_char_count == 0 then
+                        token = token:gsub("^%s+", "")
                     end
 
                     line_char_count = line_char_count + #token
 
-                    -- remove newlines
-                    local t = token:gsub("\n", " ")
-                    table.insert(words, t)
+                    table.insert(words, token)
+
                     vim.api.nvim_buf_set_lines(
                         self.chat_float.bufnr,
                         line,
