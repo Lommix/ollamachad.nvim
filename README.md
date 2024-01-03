@@ -2,6 +2,8 @@
 
 Chat with any Ollama model or use the prompts to generate/modify text.
 
+[chat.webm](https://github.com/Lommix/ollamachad.nvim/assets/84206502/2fc0addd-c8aa-4e81-911b-66574eb8f2a4)
+
 This plugin aims to provide a simple interface to chat with any Ollama model, or use the prompts to generate/modify text, while being very minimalistic
 and give the user full control over how to use it.
 
