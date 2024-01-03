@@ -32,7 +32,7 @@ local generate_popup = Popup({
 
 local popup_visibility = false
 
-generate_popup:map("n", "<ESC>", function()
+generate_popup:map("n", ollamachad.opts.keymap.close, function()
     generate_popup:hide()
     popup_visibility = false
 end)

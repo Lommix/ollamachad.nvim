@@ -92,20 +92,20 @@ function Chat:new(model, opts)
         visible = false,
     }
 
-    prompt_float:map("n", "<CR>", function()
+    prompt_float:map("n", ollamachad.opts.keymap.prompt, function()
         chat:send()
     end)
 
-    prompt_float:map("n", "<Esc>", function()
+    prompt_float:map("n", ollamachad.opts.keymap.close, function()
         chat:toggle()
     end)
 
-    prompt_float:map("n", "<C-n>", function()
+    prompt_float:map("n", ollamachad.opts.keymap.clear, function()
         chat:clear_chat()
     end)
 
-    chat_float:map("n", "<Tab>", "<C-w>W", { silent = true })
-    prompt_float:map("n", "<Tab>", "<C-w>w", { silent = true })
+    chat_float:map("n", ollamachad.opts.keymap.tab, "<C-w>W", { silent = true })
+    prompt_float:map("n", ollamachad.opts.keymap.tab, "<C-w>w", { silent = true })
 
     setmetatable(chat, self)
     self.__index = self

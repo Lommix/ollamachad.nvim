@@ -19,6 +19,16 @@ use("Lommix/ollamachad.nvim",{
         require("ollamachad").setup({
             generate_api_url = "http://127.0.0.1:11434/api/generate",
             chat_api_url = "http://127.0.0.1:11434/api/chat",
+            keymap = {
+                -- send prompt
+                prompt = "<CR>",
+                -- close chat
+                close = "<Esc>",
+                -- clear chat
+                clear = "<C-n>",
+                -- tab between prompt and chat
+                tab = "<Tab>",
+            },
         })
     end,
 })
@@ -29,10 +39,10 @@ use("Lommix/ollamachad.nvim",{
 Rather than a full-blown plugin, this is more of a library that you can use to build your own chats and prompts.
 
 ```lua
-
 local chat = require("ollamachad.chat")
 local gen = require("ollamachad.generate")
 local util = require("ollamachad.util")
+
 
 -- toggle response buffer again
 vim.keymap.set("n", "<leader>co", function()
@@ -58,5 +68,4 @@ local dolphin_mixtral = chat:new("dolphin-mixtral", {
 vim.keymap.set("n", "<leader>o", function()
 	dolphin_mixtral:toggle()
 end, { silent = true })
-
 ```
