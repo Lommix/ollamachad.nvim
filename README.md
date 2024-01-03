@@ -71,3 +71,6 @@ vim.keymap.set("n", "<leader>o", function()
 	dolphin_mixtral:toggle()
 end, { silent = true })
 ```
+[generate.webm](https://github.com/Lommix/ollamachad.nvim/assets/84206502/52f528ea-b880-4500-8afd-0c725b174189)
+
+
