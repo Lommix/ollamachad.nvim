@@ -32,7 +32,7 @@ local generate_popup = Popup({
 
 local popup_visibility = false
 
-generate_popup:map("n", ollamachad.opts.keymap.close, function()
+generate_popup:map("n", "<ESC>", function()
     generate_popup:hide()
     popup_visibility = false
 end)
@@ -82,13 +82,15 @@ M.prompt = function(request)
         return -1
     end
 
-    local args = { "--silent", "--no-buffer", "-X", "POST", ollamachad.opts.generate_api_url, "-d", request_string }
+    local args =
+        { "--silent", "--no-buffer", "-X", "POST", ollamachad.opts.api_url .. "/generate", "-d", request_string }
 
     local job = Job:new({
         command = "curl",
         args = args,
         on_stdout = function(_, data)
             vim.schedule(function()
+
                 local success, result = pcall(function()
                     return vim.fn.json_decode(data)
                 end)
@@ -124,7 +126,6 @@ M.prompt = function(request)
 
     job:start()
     return job.pid
-    -- P(ollamachad.opts.chat_api_url)
 end
 
 return M

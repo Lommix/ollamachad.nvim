@@ -3,16 +3,34 @@ local Popup = require("nui.popup")
 local Layout = require("nui.layout")
 local ollamachad = require("ollamachad")
 
+local pickers = require("telescope.pickers")
+local finders = require("telescope.finders")
+local conf = require("telescope.config").values
+local actions = require("telescope.actions")
+local action_state = require("telescope.actions.state")
+
+---@class Keymap
+---@field clear string
+---@field send string
+---@field quit string
+---@field select string
+---@field tab string
+
 ---@class ChatConfig
----@field keymap table<string, string>
+---@field keymap Keymap
+---@field cache_file string
 ---@field system_prompt string
+---@field available_models string
 ---@type ChatConfig
 local defaults = {
     keymap = {
         clear = "<C-n>",
         send = "<CR>",
         quit = "<ESC>",
+        select = "<C-k>",
+        tab = "<TAB>",
     },
+    cache_file = "~/.cache/nvim/ollamachad",
     system_prompt = "",
 }
 
@@ -22,10 +40,11 @@ local defaults = {
 
 ---@class CurrentChat
 ---@field model string
+---@field available_models string[]
 ---@field messages Message[]
 
 ---@class Chat
----@field opts table
+---@field opts ChatConfig
 ---@field layout NuiLayout
 ---@field chat_float NuiPopup
 ---@field prompt_float NuiPopup
@@ -36,14 +55,18 @@ local defaults = {
 ---@field private current_chat CurrentChat
 local Chat = {}
 
-function Chat:new(model, opts)
+--- create a new chat instance
+--- @param opts ChatConfig
+function Chat:new(opts)
+    opts = vim.tbl_deep_extend("force", defaults, opts or {})
+
     local chat_float = Popup({
         focusable = true,
         border = {
             highlight = "FloatBorder",
             style = "rounded",
             text = {
-                top = " Chat ",
+                top = "[ no model selected ]",
             },
         },
         win_options = {
@@ -85,40 +108,109 @@ function Chat:new(model, opts)
 
     local chat = {
         opts = vim.tbl_deep_extend("force", defaults, opts or {}),
-        model = model,
+        model = "",
         chat_float = chat_float,
         prompt_float = prompt_float,
         layout = layout,
         visible = false,
     }
 
-    prompt_float:map("n", ollamachad.opts.keymap.prompt, function()
+    prompt_float:map("n", opts.keymap.send, function()
         chat:send()
     end)
 
-    prompt_float:map("n", ollamachad.opts.keymap.close, function()
+    prompt_float:map("n", opts.keymap.quit, function()
         chat:toggle()
     end)
 
-    prompt_float:map("n", ollamachad.opts.keymap.clear, function()
+    prompt_float:map("n", opts.keymap.clear, function()
         chat:clear_chat()
     end)
 
-    chat_float:map("n", ollamachad.opts.keymap.tab, "<C-w>W", { silent = true })
-    prompt_float:map("n", ollamachad.opts.keymap.tab, "<C-w>w", { silent = true })
+    prompt_float:map("n", opts.keymap.select, function()
+        pickers
+            .new({}, {
+                prompt_title = "pick a model",
+                finder = finders.new_table({
+                    results = chat.available_models,
+                }),
+                sorter = conf.generic_sorter(opts),
+                attach_mappings = function(prompt_bufnr, map)
+                    actions.select_default:replace(function()
+                        actions.close(prompt_bufnr)
+                        local selection = action_state.get_selected_entry()
+                        if #selection[1] > 0 then
+                            local model = selection[1]
+                            chat:set_model(model)
+                            chat:save_model(model)
+                        end
+                    end)
+                    return true
+                end,
+            })
+            :find()
+    end)
+
+    chat_float:map("n", opts.keymap.tab, "<C-w>W", { silent = true })
+    prompt_float:map("n", opts.keymap.tab, "<C-w>w", { silent = true })
 
     setmetatable(chat, self)
     self.__index = self
 
     chat:clear_chat()
+    chat:load_available_models()
+    chat:load_model()
     return chat
 end
 
+--- set model
 function Chat:set_model(model)
+    self.chat_float.border:set_text("top", "[ " .. model .. " ]", "center")
     self.model = model
     self.current_chat.model = model
 end
 
+--- save model to cache file
+function Chat:save_model()
+    local f, err = io.open(self.opts.cache_file, "w+")
+
+    if err ~= nil then
+        print(err)
+        return
+    end
+
+    if f == nil then
+        print("file handle went missing")
+        return
+    end
+
+    f:write(self.model)
+    f:close()
+end
+
+--- load model from cache file
+function Chat:load_model()
+    local f, err = io.open(self.opts.cache_file, "r")
+    if err ~= nil then
+        print(err)
+        return
+    end
+
+    if f == nil then
+        print("file handle went missing")
+        return
+    end
+
+    local model = f:read("*a")
+
+    if model ~= nil then
+        self:set_model(model)
+    elseif #self.available_models > 0 then
+        self:set_model(self.available_models[1])
+    end
+end
+
+--- clearing the chat buffer
 function Chat:clear_chat()
     vim.api.nvim_buf_set_lines(self.chat_float.bufnr, 0, -1, false, {})
 
@@ -135,6 +227,7 @@ function Chat:clear_chat()
     end
 end
 
+--- send and recieve the current prompt
 function Chat:send()
     if self.running then
         print("Already running")
@@ -163,7 +256,7 @@ function Chat:send()
     self:prompt()
 end
 
---.toggles chat window
+--- toggles chat window
 function Chat:toggle()
     if self.visible then
         self.layout:hide()
@@ -173,6 +266,30 @@ function Chat:toggle()
         self.layout:update()
         self.visible = true
     end
+end
+
+--- load available models from api
+function Chat:load_available_models()
+    local url = ollamachad.opts.api_url .. "/tags"
+    local args = { "-s", "--no-buffer", "-X", "GET", url }
+
+    self.available_models = {}
+    Job:new({
+        command = "curl",
+        args = args,
+        on_exit = function(j, _)
+            vim.schedule(function()
+                local success, result = pcall(function()
+                    local res = j:result()
+                    return vim.fn.json_decode(res[1])
+                end)
+
+                for i, v in ipairs(result.models) do
+                    table.insert(self.available_models, v.model)
+                end
+            end)
+        end,
+    }):start()
 end
 
 --- prompt the current chat.
@@ -191,7 +308,8 @@ function Chat:prompt()
         return -1
     end
 
-    local args = { "--silent", "--no-buffer", "-X", "POST", ollamachad.opts.chat_api_url, "-d", request_string }
+    local url = ollamachad.opts.api_url .. "/chat"
+    local args = { "--silent", "--no-buffer", "-X", "POST", url, "-d", request_string }
 
     local response = {
         role = "assistant",
