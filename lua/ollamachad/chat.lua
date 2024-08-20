@@ -94,15 +94,15 @@ function Chat:new(opts)
 
     local layout = Layout(
         {
-            position = "50%",
+            position = 0.5,
             size = {
-                width = "80%",
-                height = "80%",
+                width = 0.8,
+                height = 0.8,
             },
         },
         Layout.Box({
-            Layout.Box(chat_float, { size = "85%" }),
-            Layout.Box(prompt_float, { size = "15%" }),
+            Layout.Box(chat_float, { size = 0.85 }),
+            Layout.Box(prompt_float, { size = 0.15 }),
         }, { dir = "col" })
     )
 
@@ -134,6 +134,16 @@ function Chat:new(opts)
                 finder = finders.new_table({
                     results = chat.available_models,
                 }),
+                layout_config = {
+                    vertical = {
+                        width = 0.3,
+                        height = 0.3,
+                    },
+                    horizontal = {
+                        width = 0.3,
+                        height = 0.3,
+                    },
+                },
                 sorter = conf.generic_sorter(opts),
                 attach_mappings = function(prompt_bufnr, map)
                     actions.select_default:replace(function()
