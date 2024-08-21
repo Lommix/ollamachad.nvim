@@ -212,6 +212,7 @@ function Chat:load_model()
     end
 
     local model = f:read("*a")
+    f:close()
 
     if model ~= nil then
         self:set_model(model)
