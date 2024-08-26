@@ -4,8 +4,10 @@ Chat with any Ollama model or use the prompts to generate/modify text.
 
 [chat.webm](https://github.com/Lommix/ollamachad.nvim/assets/84206502/2fc0addd-c8aa-4e81-911b-66574eb8f2a4)
 
-This plugin aims to provide a simple interface to chat with any Ollama model, or use the prompts to generate/modify text, while being very minimalistic
+This plugin aims to provide a simple interface to chat with any Ollama model or use the prompts to generate/modify text, while being very minimalistic
 and give the user full control over how to use it.
+
+The Chat can be used with any model. There is a hotkey to switch between any available model found in your ollama instance.
 
 # Installation & Configuration
 
@@ -29,6 +31,7 @@ return {
         })
 
         --- create a new chat, with optional configuration
+        --- these are the defaults
         local chat = Chat:new({
             keymap = {
                 clear = "<C-n>",
@@ -40,14 +43,17 @@ return {
             system_prompt = "", -- provide any context
         })
 
+        --- bind a key to open
         vim.keymap.set("n", "<leader>t", function()
             chat:toggle()
         end, { silent = true })
 
+
+        --- gen mode without a chat, just a single answer, create for creative text work
         --- create a quick visual select and rewrite generative request
         vim.keymap.set("v", "<leader>cr", function()
             local instruction =
-            "Please rewrite the following text to improve clarity, coherence, and technical accuracy:",
+            "Please rewrite the following text to improve clarity, coherence while keeping the vibe:",
             local request = {
                 model = "mistral",
                 prompt = instruction .. util.read_visiual_lines(),
@@ -58,6 +64,5 @@ return {
     end,
 }
 ```
+
 [generate.webm](https://github.com/Lommix/ollamachad.nvim/assets/84206502/52f528ea-b880-4500-8afd-0c725b174189)
-
-
