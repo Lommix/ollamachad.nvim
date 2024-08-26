@@ -119,6 +119,10 @@ function Chat:new(opts)
         chat:send()
     end)
 
+    chat_float:map("n", opts.keymap.quit, function()
+        chat:toggle()
+    end)
+
     prompt_float:map("n", opts.keymap.quit, function()
         chat:toggle()
     end)
