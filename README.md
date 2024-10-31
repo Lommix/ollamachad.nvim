@@ -5,6 +5,8 @@ A chat and generative prompt plugin for Neovim, powered by a local Ollama API.
 -   Choose any installed model from the provided Ollama API (persisted cross session).
 -   Mark any file as context. Context is added as system prompt automatically.
 -   Provide your own system prompts to manipulate and shape behavior.
+-   
+[ollamachad.webm](https://github.com/user-attachments/assets/f433d103-730a-4e4d-ac35-c8ae10a5e67f)
 
 ## Commands
 
