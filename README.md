@@ -1,68 +1,110 @@
-# Ollamachad v1.1.0
+# Ollamachad v2.0.0
 
-Chat with any Ollama model or use the prompts to generate/modify text.
+A chat and generative prompt plugin for Neovim, powered by a local Ollama API.
 
-[chat.webm](https://github.com/Lommix/ollamachad.nvim/assets/84206502/2fc0addd-c8aa-4e81-911b-66574eb8f2a4)
+-   Choose any installed model from the provided Ollama API (persisted cross session).
+-   Mark any file as context. Context is added as system prompt automatically.
+-   Provide your own system prompts to manipulate and shape behavior.
 
-This plugin aims to provide a simple interface to chat with any Ollama model or use the prompts to generate/modify text, while being very minimalistic
-and give the user full control over how to use it.
+## Commands
 
-The Chat can be used with any model. There is a hotkey to switch between any available model found in your ollama instance.
+-   `:OLLAMAMARK` to mark the current buffers file for context.
+-   `:OLLAMACLEAR` clear marked files.
 
-# Installation & Configuration
+## Installation & Configuration
+
+Example for Lazy.
 
 ```lua
--- lazy
 return {
-    "Lommix/ollamachad.nvim",
-    dependencies = {
-        "MunifTanjim/nui.nvim",
-        "nvim-lua/plenary.nvim",
-        "nvim-telescope/telescope.nvim",
-    },
-    config = function()
-        local Chat = require("ollamachad.chat")
-        local gen = require("ollamachad.generate")
-        local util = require("ollamachad.util")
+	{
+		"lommix/ollamachad.nvim",
+		dir = "~/Projects/nvim_plugins/ollamachad.nvim",
+		dependencies = {
+			"MunifTanjim/nui.nvim",
+			"nvim-lua/plenary.nvim",
+		},
+		config = function()
+			require("ollamachad.init").setup({})
 
-        --- call setup if have a special address for your ollama server
-        require("ollamachad").setup({
-            api_url = "http://127.0.0.1:11434/api",
-        })
+			local Chat = require("ollamachad.chat")
+			local gen = require("ollamachad.generate")
+			local util = require("ollamachad.util")
 
-        --- create a new chat, with optional configuration
-        --- these are the defaults
-        local chat = Chat:new({
-            keymap = {
-                clear = "<C-n>",
-                send = "<CR>",
-                quit = "<ESC>",
-                select = "<C-k>",
-            },
-            cache_file = "~/.cache/nvim/ollamachad", -- persists selected model between sessions
-            system_prompt = "", -- provide any context
-        })
+			-- toggle gen output
+			vim.keymap.set("n", "<leader>co", function()
+				gen.toggle_popup()
+			end, { silent = true })
 
-        --- bind a key to open
-        vim.keymap.set("n", "<leader>t", function()
-            chat:toggle()
-        end, { silent = true })
+            -- using the gen module for fixed tasks
+			vim.keymap.set("v", "<leader>cr", function()
+				local instruction =
+					"Please rewrite the following text to improve clarity, coherence while keeping the vibe:"
+				local request = {
+					model = "llama3.1:latest",
+					prompt = instruction .. util.read_visiual_lines(),
+				}
+				gen.prompt(request)
+			end, { silent = true })
 
+			-- using the chat module
+			local chat = Chat:new({
+				show_keys = true,
+                -- example system prompt
+				system_prompt = [[
+				You provide assistant to a developer. Follow the following rule set in order:
+				1.) Conciseness: Provide short and concise answers.
+				2.) Relevance: Only include relevant code snippets to the question. Use comments to replace boilerplate code.
+				3.) Clarification: If additional information is needed to provide proper support, ask the user for it.
+				4.) Transparency: If uncertain about a solution, inform the user that you cannot answer.
+				]],
+			})
 
-        --- gen mode without a chat, just a single answer, create for creative text work
-        --- create a quick visual select and rewrite generative request
-        vim.keymap.set("v", "<leader>cr", function()
-            local instruction =
-            "Please rewrite the following text to improve clarity, coherence while keeping the vibe:",
-            local request = {
-                model = "mistral",
-                prompt = instruction .. util.read_visiual_lines(),
-            }
-            gen.prompt(request)
-        end, { silent = true })
+            -- use this key in an open buffer to mark the file for context
+			vim.keymap.set("n", "<leader>l", ":OLLAMAMARK<CR>", { silent = true })
 
-    end,
+            -- toggle the chat
+			vim.keymap.set("n", "<leader>t", function()
+				chat:toggle()
+			end, { silent = true })
+		end,
+	},
 }
 ```
 
-[generate.webm](https://github.com/Lommix/ollamachad.nvim/assets/84206502/52f528ea-b880-4500-8afd-0c725b174189)
+## Configure
+
+Provide a custom API-URL.
+
+```lua
+require("ollamachad.init").setup({
+    api_url = "http://127.0.0.1:11434/api",
+})
+```
+
+## Change Keys and Chat Settings
+
+The default chat options
+
+```lua
+local default_chat_config = {
+    keymap = {
+        clear = "<C-n>",
+        send = "<CR>",
+        quit = "<ESC>",
+        select = "<C-k>",
+        context = "<C-c>",
+        reload = "<C-l>",
+        tab = "<TAB>",
+    },
+    cache_file =  vim.fn.expand("~") .. "/.cache/nvim/ollamachad",
+    system_prompt = "",
+    show_keys = true,
+    model_options = {
+        -- you can pass any model option
+        -- specified by the Ollama-API documentation
+        temperature = 0.7,
+    },
+}
+local chat = Chat:new(default_chat_config)
+```

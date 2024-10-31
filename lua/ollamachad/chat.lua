@@ -1,6 +1,7 @@
 local Job = require("plenary.job")
 local Popup = require("nui.popup")
 local Layout = require("nui.layout")
+local Text = require("nui.text")
 local ollamachad = require("ollamachad")
 
 local pickers = require("telescope.pickers")
@@ -15,23 +16,38 @@ local action_state = require("telescope.actions.state")
 ---@field quit string
 ---@field select string
 ---@field tab string
+---@field context string
+---@field reload string
+
+---@class ModelOptions
+---@description checkout all options @https://github.com/ollama/ollama/blob/main/docs/modelfile.md#valid-parameters-and-values
+---@field temperature ?float
+---@field num_predict ?integer
+---@field num_ctx ?integer
 
 ---@class ChatConfig
----@field keymap Keymap
----@field cache_file string
----@field system_prompt string
----@field available_models string
+---@field keymap ?Keymap
+---@field cache_file ?string
+---@field system_prompt ?string
+---@field show_keys ?boolean
+---@field model_options ?ModelOptions
 ---@type ChatConfig
-local defaults = {
+local default_chat_config = {
     keymap = {
         clear = "<C-n>",
         send = "<CR>",
         quit = "<ESC>",
         select = "<C-k>",
+        context = "<C-c>",
+        reload = "<C-l>",
         tab = "<TAB>",
     },
-    cache_file = "~/.cache/nvim/ollamachad",
+    cache_file =  vim.fn.expand("~") .. "/.cache/nvim/ollamachad",
     system_prompt = "",
+    show_keys = true,
+    model_options = {
+        temperature = 0.7,
+    },
 }
 
 ---@class Message
@@ -40,16 +56,18 @@ local defaults = {
 
 ---@class CurrentChat
 ---@field model string
----@field available_models string[]
 ---@field messages Message[]
+---@field options ModelOptions
 
 ---@class Chat
 ---@field opts ChatConfig
 ---@field layout NuiLayout
 ---@field chat_float NuiPopup
 ---@field prompt_float NuiPopup
+---@field available_models string[]
 ---@field model string
 ---@field toggle function
+---@field context string
 ---@field private visible boolean
 ---@field private running boolean
 ---@field private current_chat CurrentChat
@@ -58,7 +76,7 @@ local Chat = {}
 --- create a new chat instance
 --- @param opts ChatConfig
 function Chat:new(opts)
-    opts = vim.tbl_deep_extend("force", defaults, opts or {})
+    opts = vim.tbl_deep_extend("force", default_chat_config, opts or {})
 
     local chat_float = Popup({
         focusable = true,
@@ -87,7 +105,20 @@ function Chat:new(opts)
             highlight = "FloatBorder",
             style = "rounded",
             text = {
-                top = " Prompt ",
+                top = "[ Prompt ]",
+                bottom = (function()
+                    if opts.show_keys == true then
+                        return "[ "
+                            .. opts.keymap.reload
+                            .. ": load ctx    "
+                            .. opts.keymap.clear
+                            .. ": clear    "
+                            .. opts.keymap.select
+                            .. ": select ]"
+                    else
+                        return ""
+                    end
+                end)(),
             },
         },
     })
@@ -96,8 +127,8 @@ function Chat:new(opts)
         {
             position = 0.5,
             size = {
-                width = 0.8,
-                height = 0.8,
+                width = "80%",
+                height = "80%",
             },
         },
         Layout.Box({
@@ -107,12 +138,13 @@ function Chat:new(opts)
     )
 
     local chat = {
-        opts = vim.tbl_deep_extend("force", defaults, opts or {}),
+        opts = vim.tbl_deep_extend("force", default_chat_config, opts or {}),
         model = "",
         chat_float = chat_float,
         prompt_float = prompt_float,
         layout = layout,
         visible = false,
+        context = "",
     }
 
     prompt_float:map("n", opts.keymap.send, function()
@@ -129,6 +161,17 @@ function Chat:new(opts)
 
     prompt_float:map("n", opts.keymap.clear, function()
         chat:clear_chat()
+    end)
+
+    prompt_float:map("n", opts.keymap.reload, function()
+        chat:load_context_files()
+        chat:draw_header()
+    end)
+
+    prompt_float:map("n", opts.keymap.context, function()
+        vim.g.ollamachad_marked_files = {}
+        chat.context = ""
+        chat:draw_header()
     end)
 
     prompt_float:map("n", opts.keymap.select, function()
@@ -174,14 +217,27 @@ function Chat:new(opts)
     chat:clear_chat()
     chat:load_available_models()
     chat:load_model()
+
     return chat
 end
 
 --- set model
 function Chat:set_model(model)
-    self.chat_float.border:set_text("top", "[ " .. model .. " ]", "center")
     self.model = model
     self.current_chat.model = model
+end
+
+function Chat:draw_header()
+    local header = "model: " .. self.model
+
+    header = header
+        .. "    context size: "
+        .. #self.context
+        .. "    marked files: "
+        .. #vim.g.ollamachad_marked_files
+        .. "    temp: "
+        .. self.opts.model_options.temperature
+    self.chat_float.border:set_text("top", header, "center")
 end
 
 --- save model to cache file
@@ -228,24 +284,51 @@ end
 --- clearing the chat buffer
 function Chat:clear_chat()
     vim.api.nvim_buf_set_lines(self.chat_float.bufnr, 0, -1, false, {})
-
+    self:load_context_files()
     self.current_chat = {
         model = self.model,
-        messages = {},
+        options = self.opts.model_options,
+        messages = {
+            {
+                role = "system",
+                content = self.opts.system_prompt,
+            },
+            {
+                role = "system",
+                content = "<context>" .. self.context .. "</context>",
+            },
+        },
     }
 
-    if self.opts.system_prompt ~= "" then
-        self.current_chat.messages[1] = {
-            role = "system",
-            content = self.opts.system_prompt,
-        }
+    self:draw_header()
+end
+
+--- load context from files
+function Chat:load_context_files()
+    local files_content = {}
+
+    for _, file_path in ipairs(vim.g.ollamachad_marked_files) do
+        local handle = io.open(file_path, "r") -- Open the file in read-only mode
+
+        if not handle then
+            print("Could not open file: " .. file_path)
+            goto continue
+        end
+
+        local buffer_content = handle:read("*a") -- Read the entire content of the file as a string
+        handle:close()
+        table.insert(files_content, "<file name=" .. file_path .. ">\n" .. buffer_content .. "\n</file>")
+        ::continue::
     end
+    self.context = table.concat(files_content)
+
+    ::continue::
 end
 
 --- send and recieve the current prompt
 function Chat:send()
     if self.running then
-        print("Already running")
+        print("Already running or stuck. Try restart")
         return
     end
 
@@ -263,7 +346,7 @@ function Chat:send()
     -- insert into chat
     vim.api.nvim_buf_set_lines(self.chat_float.bufnr, -1, -1, false, prompt_buffer)
 
-    self.current_chat.messages[#self.current_chat.messages + 1] = {
+    self.current_chat.messages[#self.current_chat.messages + 2] = {
         role = "user",
         content = prompt_string,
     }
@@ -280,6 +363,7 @@ function Chat:toggle()
         self.layout:show()
         self.layout:update()
         self.visible = true
+        self:draw_header()
     end
 end
 
@@ -308,7 +392,7 @@ function Chat:load_available_models()
 end
 
 --- prompt the current chat.
---- @return number - pid of the curl process
+--- @return string|integer|function - error | pid
 function Chat:prompt()
     local line = vim.api.nvim_buf_line_count(self.chat_float.bufnr)
     local line_char_count = 0
@@ -319,8 +403,7 @@ function Chat:prompt()
     end)
 
     if not success then
-        print("Error: " .. json)
-        return -1
+        return "failed to parse json"
     end
 
     local url = ollamachad.opts.api_url .. "/chat"
@@ -348,7 +431,7 @@ function Chat:prompt()
                     return
                 end
 
-                if not result.done then
+                if result and not result.done then
                     local token = result.message.content
 
                     if string.match(token, "\n") then
