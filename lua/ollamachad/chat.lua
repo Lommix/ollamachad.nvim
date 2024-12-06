@@ -68,6 +68,8 @@ local default_chat_config = {
 ---@field model string
 ---@field toggle function
 ---@field context string
+---@field prompt_bufnr number
+---@field chat_bufnr number
 ---@field private visible boolean
 ---@field private running boolean
 ---@field private current_chat CurrentChat
@@ -78,7 +80,28 @@ local Chat = {}
 function Chat:new(opts)
     opts = vim.tbl_deep_extend("force", default_chat_config, opts or {})
 
+    local chat = {
+        opts = vim.tbl_deep_extend("force", default_chat_config, opts or {}),
+        model = "",
+        chat_bufnr = vim.api.nvim_create_buf(false, true),
+        prompt_bufnr = vim.api.nvim_create_buf(false, true),
+        visible = false,
+        context = "",
+    }
+
+    setmetatable(chat, self)
+    self.__index = self
+
+    chat:clear_chat()
+    chat:load_available_models()
+    chat:load_model()
+
+    return chat
+end
+
+function Chat:create_modal()
     local chat_float = Popup({
+        bufnr = self.chat_bufnr,
         focusable = true,
         border = {
             highlight = "FloatBorder",
@@ -99,6 +122,7 @@ function Chat:new(opts)
     })
 
     local prompt_float = Popup({
+        bufnr = self.prompt_bufnr,
         focusable = true,
         enter = true,
         border = {
@@ -107,13 +131,13 @@ function Chat:new(opts)
             text = {
                 top = "[ Prompt ]",
                 bottom = (function()
-                    if opts.show_keys == true then
+                    if self.opts.show_keys == true then
                         return "[ "
-                            .. opts.keymap.reload
+                            .. self.opts.keymap.reload
                             .. ": load ctx    "
-                            .. opts.keymap.clear
+                            .. self.opts.keymap.clear
                             .. ": clear    "
-                            .. opts.keymap.select
+                            .. self.opts.keymap.select
                             .. ": select ]"
                     else
                         return ""
@@ -137,49 +161,39 @@ function Chat:new(opts)
         }, { dir = "col" })
     )
 
-    local chat = {
-        opts = vim.tbl_deep_extend("force", default_chat_config, opts or {}),
-        model = "",
-        chat_float = chat_float,
-        prompt_float = prompt_float,
-        layout = layout,
-        visible = false,
-        context = "",
-    }
-
-    prompt_float:map("n", opts.keymap.send, function()
-        chat:send()
+    prompt_float:map("n", self.opts.keymap.send, function()
+        self:send()
     end)
 
-    chat_float:map("n", opts.keymap.quit, function()
-        chat:toggle()
+    chat_float:map("n", self.opts.keymap.quit, function()
+        self:toggle()
     end)
 
-    prompt_float:map("n", opts.keymap.quit, function()
-        chat:toggle()
+    prompt_float:map("n", self.opts.keymap.quit, function()
+        self:toggle()
     end)
 
-    prompt_float:map("n", opts.keymap.clear, function()
-        chat:clear_chat()
+    prompt_float:map("n", self.opts.keymap.clear, function()
+        self:clear_chat()
     end)
 
-    prompt_float:map("n", opts.keymap.reload, function()
-        chat:load_context_files()
-        chat:draw_header()
+    prompt_float:map("n", self.opts.keymap.reload, function()
+        self:load_context_files()
+        self:draw_header()
     end)
 
-    prompt_float:map("n", opts.keymap.context, function()
+    prompt_float:map("n", self.opts.keymap.context, function()
         vim.g.ollamachad_marked_files = {}
-        chat.context = ""
-        chat:draw_header()
+        self.context = ""
+        self:draw_header()
     end)
 
-    prompt_float:map("n", opts.keymap.select, function()
+    prompt_float:map("n", self.opts.keymap.select, function()
         pickers
             .new({}, {
                 prompt_title = "pick a model",
                 finder = finders.new_table({
-                    results = chat.available_models,
+                    results = self.available_models,
                 }),
                 layout_config = {
                     vertical = {
@@ -191,15 +205,15 @@ function Chat:new(opts)
                         height = 0.3,
                     },
                 },
-                sorter = conf.generic_sorter(opts),
+                sorter = conf.generic_sorter(self.opts),
                 attach_mappings = function(prompt_bufnr, map)
                     actions.select_default:replace(function()
                         actions.close(prompt_bufnr)
                         local selection = action_state.get_selected_entry()
                         if #selection[1] > 0 then
                             local model = selection[1]
-                            chat:set_model(model)
-                            chat:save_model(model)
+                            self:set_model(model)
+                            self:save_model()
                         end
                     end)
                     return true
@@ -207,19 +221,15 @@ function Chat:new(opts)
             })
             :find()
     end)
+    chat_float:map("n", self.opts.keymap.tab, "<C-w>W", { silent = true })
+    prompt_float:map("n", self.opts.keymap.tab, "<C-w>w", { silent = true })
 
-    chat_float:map("n", opts.keymap.tab, "<C-w>W", { silent = true })
-    prompt_float:map("n", opts.keymap.tab, "<C-w>w", { silent = true })
-
-    setmetatable(chat, self)
-    self.__index = self
-
-    chat:clear_chat()
-    chat:load_available_models()
-    chat:load_model()
-
-    return chat
+    self.chat_float = chat_float
+    self.prompt_float = prompt_float
+    self.layout = layout
+    self:draw_header()
 end
+
 
 --- set model
 function Chat:set_model(model)
@@ -283,7 +293,7 @@ end
 
 --- clearing the chat buffer
 function Chat:clear_chat()
-    vim.api.nvim_buf_set_lines(self.chat_float.bufnr, 0, -1, false, {})
+    vim.api.nvim_buf_set_lines(self.chat_bufnr, 0, -1, false, {})
     self:load_context_files()
     self.current_chat = {
         model = self.model,
@@ -300,7 +310,6 @@ function Chat:clear_chat()
         },
     }
 
-    self:draw_header()
 end
 
 --- load context from files
@@ -336,7 +345,7 @@ function Chat:send()
     local prompt_string = table.concat(prompt_buffer, " ")
 
     -- remove line
-    vim.api.nvim_buf_set_lines(self.prompt_float.bufnr, 0, -1, false, {})
+    vim.api.nvim_buf_set_lines(self.prompt_bufnr, 0, -1, false, {})
 
     for i, line in ipairs(prompt_buffer) do
         prompt_buffer[i] = "# " .. line
@@ -344,7 +353,7 @@ function Chat:send()
     prompt_buffer[#prompt_buffer + 1] = ""
 
     -- insert into chat
-    vim.api.nvim_buf_set_lines(self.chat_float.bufnr, -1, -1, false, prompt_buffer)
+    vim.api.nvim_buf_set_lines(self.chat_bufnr, -1, -1, false, prompt_buffer)
 
     self.current_chat.messages[#self.current_chat.messages + 2] = {
         role = "user",
@@ -357,9 +366,10 @@ end
 --- toggles chat window
 function Chat:toggle()
     if self.visible then
-        self.layout:hide()
+        self.layout:unmount()
         self.visible = false
     else
+        self:create_modal()
         self.layout:show()
         self.layout:update()
         self.visible = true
@@ -451,7 +461,7 @@ function Chat:prompt()
                     table.insert(words, token)
 
                     vim.api.nvim_buf_set_lines(
-                        self.chat_float.bufnr,
+                        self.chat_bufnr,
                         line,
                         line + 1,
                         false,

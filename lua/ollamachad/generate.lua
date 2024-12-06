@@ -4,6 +4,7 @@ local ollamachad = require("ollamachad")
 local M = {}
 
 local generate_popup = Popup({
+    bufnr = vim.api.nvim_create_buf(false, true),
     size = {
         width = "80%",
         height = "80%",

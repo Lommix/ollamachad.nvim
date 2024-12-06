@@ -1,4 +1,4 @@
-# Ollamachad v2.0.0
+# Ollamachad
 
 A chat and generative prompt plugin for Neovim, powered by a local Ollama API.
 
