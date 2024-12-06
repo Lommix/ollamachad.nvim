@@ -214,6 +214,8 @@ function Chat:create_modal()
                             local model = selection[1]
                             self:set_model(model)
                             self:save_model()
+                            self:load_context_files()
+                            self:draw_header()
                         end
                     end)
                     return true
@@ -373,6 +375,7 @@ function Chat:toggle()
         self.layout:show()
         self.layout:update()
         self.visible = true
+        self:load_context_files()
         self:draw_header()
     end
 end
