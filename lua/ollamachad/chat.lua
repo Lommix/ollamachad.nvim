@@ -463,16 +463,21 @@ function Chat:prompt()
 
                     table.insert(words, token)
 
-                    vim.api.nvim_buf_set_lines(
-                        self.chat_bufnr,
-                        line,
-                        line + 1,
-                        false,
-                        { table.concat(words, "") }
-                    )
+                    if vim.api.nvim_buf_is_valid(self.chat_bufnr) then
+                        vim.api.nvim_buf_set_lines(
+                            self.chat_bufnr,
+                            line,
+                            line + 1,
+                            false,
+                            { table.concat(words, "") }
+                        )
 
-                    -- scroll to bottom
-                    vim.api.nvim_win_set_cursor(self.chat_float.winid, { line + 1, 0 })
+                    end
+
+                    if self.chat_float.winid ~= nil and vim.api.nvim_win_is_valid(self.chat_float.winid) then
+                        -- scroll to bottom
+                        vim.api.nvim_win_set_cursor(self.chat_float.winid, { line + 1, 0 })
+                    end
 
                     -- save response
                     response.content = response.content .. result.message.content
